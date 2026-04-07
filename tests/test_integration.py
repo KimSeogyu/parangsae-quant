@@ -1,131 +1,147 @@
-from __future__ import annotations
+import tempfile
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from nautilus_trader.backtest.engine import BacktestEngine, BacktestEngineConfig
-from nautilus_trader.config import LoggingConfig
-from nautilus_trader.model.currencies import USDT
-from nautilus_trader.model.enums import AccountType, OmsType
-from nautilus_trader.model.identifiers import Venue
-from nautilus_trader.model.objects import Money
-from nautilus_trader.test_kit.providers import TestInstrumentProvider
 
-from src.alpha.momentum import MomentumAlpha, MomentumAlphaConfig
-from src.data.catalog import load_bars_from_parquet
-from src.portfolio.construction import PortfolioConstruction, PortfolioConstructionConfig
-from src.risk.model import RiskModel, RiskModelConfig
-from src.universe.model import UniverseModel, UniverseModelConfig
+@pytest.fixture
+def strategy_settings_yaml():
+    return """\
+system:
+  mode: backtest
+  log_level: WARNING
+
+data:
+  exchange: binance
+  market_types:
+    - spot
+  timeframe: 1h
+  history_days: 365
+  storage_path: "{data_dir}"
+
+universe:
+  size: 100
+  ranking_metric: avg_quote_volume_14d
+  ranking_window: 50
+  inclusion_rank: 5
+  exclusion_rank: 8
+
+alphas:
+  crypto_qm_momentum:
+    enabled: true
+    module: src.alpha.momentum.QMMomentumAlpha
+    weight: 0.75
+    params:
+      lookback_hours: 336
+      skip_hours: 24
+      vol_window_hours: 720
+      fip_enabled: true
+      fip_floor: 0.3
+      ts_filter: true
+
+  low_volatility:
+    enabled: true
+    module: src.alpha.low_volatility.LowVolatilityAlpha
+    weight: 0.25
+    params:
+      vol_window_hours: 336
+
+risk:
+  btc_regime:
+    enabled: false
+  volatility_targeting:
+    enabled: false
+  correlation_monitor:
+    enabled: false
+  drawdown_scaling:
+    enabled: true
+    tiers:
+      - [0.05, 1.0]
+      - [0.10, 0.75]
+      - [0.15, 0.50]
+      - [0.20, 0.25]
+      - [0.25, 0.0]
+    min_total_scale: 0.05
+
+portfolio:
+  initial_capital: 100000
+  num_holdings: 3
+  entry_rank: 3
+  exit_rank: 5
+  rebalance_interval_hours: 1
+  min_weight_change: 0.005
+  max_hourly_turnover: 0.20
+  max_daily_turnover: 0.80
+  max_position_btc: 0.40
+  max_position_eth: 0.30
+  max_position_other: 0.20
+  min_position: 0.01
+  zscore_clip: 3.0
+
+backtest:
+  start_date: "2025-01-01"
+  end_date: "2025-02-20"
+  fee_rate: 0.001
+  slippage_prob: 0.0
+
+binance:
+  api_key: ""
+  api_secret: ""
+"""
 
 
-def _make_ohlcv(
-    hours: int,
-    base_price: float,
-    trend: float,
-    volume: float,
-) -> pd.DataFrame:
-    """Generate synthetic OHLCV data with a linear trend."""
-    dates = pd.date_range("2025-01-01", periods=hours, freq="1h", tz="UTC")
-    prices = [base_price + trend * i for i in range(hours)]
-    return pd.DataFrame(
+def _generate_parquet(data_dir: Path, symbol: str, n: int, base: float, drift: float):
+    """Generate synthetic hourly parquet data for one symbol.
+
+    The parquet is written with a UTC DatetimeIndex so that
+    catalog.load_bars_from_parquet can read it without modification.
+    """
+    np.random.seed(hash(symbol) % 2**31)
+    dates = pd.date_range("2025-01-01", periods=n, freq="1h", tz="UTC")
+    prices = [base]
+    for _ in range(n - 1):
+        prices.append(prices[-1] * (1 + np.random.normal(drift, 0.015)))
+    prices = np.array(prices)
+
+    df = pd.DataFrame(
         {
-            "open": [p - 10 for p in prices],
-            "high": [p + 50 for p in prices],
-            "low": [p - 50 for p in prices],
+            "open": prices * 0.999,
+            "high": prices * 1.005,
+            "low": prices * 0.995,
             "close": prices,
-            "volume": [volume] * hours,
-            "quote_volume": [p * volume for p in prices],
+            "volume": np.random.uniform(0.5, 3.0, n),
+            "quote_volume": prices * np.random.uniform(0.5, 3.0, n),
         },
         index=dates,
     )
+    spot_dir = data_dir / "spot"
+    spot_dir.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(spot_dir / f"{symbol}.parquet")
 
 
-@pytest.fixture
-def synthetic_data(tmp_path):
-    """Create synthetic parquet files for BTC (trending up) and ETH (flat)."""
-    spot_dir = tmp_path / "spot"
-    spot_dir.mkdir()
+def test_full_strategy_backtest_runs(strategy_settings_yaml):
+    """End-to-end: generate data, build engine, run backtest, verify no crash."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir) / "data"
+        n = 1200  # 50 days of hourly bars
 
-    btc = _make_ohlcv(hours=500, base_price=50000, trend=10, volume=100.0)
-    btc.to_parquet(spot_dir / "BTCUSDT.parquet")
+        # Generate 3 synthetic coins with TestInstrumentProvider fallbacks
+        _generate_parquet(data_dir, "BTCUSDT", n, 50000, 0.0003)
+        _generate_parquet(data_dir, "ETHUSDT", n, 3000, 0.0002)
+        _generate_parquet(data_dir, "ADAUSDT", n, 0.5, 0.0001)
 
-    eth = _make_ohlcv(hours=500, base_price=3000, trend=0, volume=50.0)
-    eth.to_parquet(spot_dir / "ETHUSDT.parquet")
+        yaml_content = strategy_settings_yaml.format(data_dir=str(data_dir))
+        config_path = Path(tmpdir) / "settings.yaml"
+        config_path.write_text(yaml_content)
 
-    return tmp_path
+        from src.config.loader import load_settings
+        from src.engine.factory import build_backtest_engine
 
+        settings = load_settings(str(config_path))
+        engine = build_backtest_engine(settings)
+        engine.run()
 
-def test_backtest_runs_without_error(synthetic_data):
-    """End-to-end integration test: full pipeline runs and processes bars."""
-    engine = BacktestEngine(
-        config=BacktestEngineConfig(
-            logging=LoggingConfig(log_level="WARNING"),
-        ),
-    )
-
-    engine.add_venue(
-        venue=Venue("BINANCE"),
-        oms_type=OmsType.NETTING,
-        account_type=AccountType.MARGIN,
-        starting_balances=[Money(100_000, USDT)],
-    )
-
-    btc = TestInstrumentProvider.btcusdt_binance()
-    eth = TestInstrumentProvider.ethusdt_binance()
-    engine.add_instrument(btc)
-    engine.add_instrument(eth)
-
-    for symbol, instrument in [("BTCUSDT", btc), ("ETHUSDT", eth)]:
-        bars = load_bars_from_parquet(
-            path=str(synthetic_data / "spot" / f"{symbol}.parquet"),
-            instrument=instrument,
-        )
-        engine.add_data(bars, sort=False)
-    engine.sort_data()
-
-    engine.add_actor(
-        UniverseModel(
-            UniverseModelConfig(
-                ranking_window=48,
-                inclusion_rank=5,
-                exclusion_rank=10,
-            ),
-        ),
-    )
-
-    engine.add_actor(
-        MomentumAlpha(
-            MomentumAlphaConfig(
-                alpha_name="momentum",
-                params={"lookback": 24},
-            ),
-        ),
-    )
-
-    engine.add_actor(
-        RiskModel(
-            RiskModelConfig(
-                max_position_pct=0.3,
-                max_drawdown=0.5,
-                max_total_exposure=1.0,
-                volatility_window=48,
-            ),
-        ),
-    )
-
-    engine.add_strategy(
-        PortfolioConstruction(
-            PortfolioConstructionConfig(
-                rebalance_interval_hours=1,
-                min_trade_threshold=0.001,
-                max_position_pct=0.3,
-                max_total_exposure=1.0,
-                alpha_weights={"momentum": 1.0},
-                order_id_tag="TEST001",
-            ),
-        ),
-    )
-
-    engine.run()
-    assert engine.iteration > 0
-    engine.dispose()
+        # Verify engine completed
+        assert engine.iteration > 0

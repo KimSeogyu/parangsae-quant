@@ -419,10 +419,14 @@ class PortfolioConstruction(Strategy):
         quantity = notional / last_price
         side = OrderSide.BUY if delta > 0 else OrderSide.SELL
 
+        rounded_qty = instrument.make_qty(Decimal(str(quantity)))
+        if float(rounded_qty) <= 0.0:
+            return
+
         order = self.order_factory.market(
             instrument_id=instrument_id,
             order_side=side,
-            quantity=instrument.make_qty(Decimal(str(quantity))),
+            quantity=rounded_qty,
             time_in_force=TimeInForce.IOC,
         )
         self.submit_order(order)
