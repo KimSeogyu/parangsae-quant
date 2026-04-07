@@ -60,3 +60,19 @@ def test_apply_hysteresis_exclusion():
     assert "ETHUSDT" not in new_universe
     assert added == ()
     assert set(removed) == {"ETHUSDT"}
+
+
+def test_apply_hysteresis_missing_from_rankings():
+    """Symbols in universe but absent from rankings should be removed."""
+    current_universe = {"BTCUSDT", "DELISTED"}
+    rankings = {"BTCUSDT": 1}  # DELISTED not in rankings at all
+
+    new_universe, added, removed = apply_hysteresis(
+        current_universe=current_universe,
+        rankings=rankings,
+        inclusion_rank=100,
+        exclusion_rank=150,
+    )
+
+    assert "DELISTED" not in new_universe
+    assert set(removed) == {"DELISTED"}

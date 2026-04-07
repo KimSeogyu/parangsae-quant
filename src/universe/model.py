@@ -46,6 +46,11 @@ def apply_hysteresis(
                 new_universe.add(symbol)
                 added.append(symbol)
 
+    # Symbols in current universe but absent from rankings → remove them
+    for symbol in current_universe:
+        if symbol not in rankings:
+            removed.append(symbol)
+
     return new_universe, tuple(added), tuple(removed)
 
 
@@ -75,9 +80,9 @@ class UniverseModel(Actor):
         current_hour = bar.ts_event // 3_600_000_000_000
         if current_hour > self._last_ranking_hour:
             self._last_ranking_hour = current_hour
-            self._try_rebalance()
+            self._try_rebalance(bar.ts_event)
 
-    def _try_rebalance(self) -> None:
+    def _try_rebalance(self, ts_event: int) -> None:
         max_buf_len = max(
             (len(buf) for buf in self._volume_buffers.values()), default=0
         )
@@ -106,5 +111,5 @@ class UniverseModel(Actor):
                 "added": list(state.added),
                 "removed": list(state.removed),
             }),
-            ts_event=0,
+            ts_event=ts_event,
         )
