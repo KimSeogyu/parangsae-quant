@@ -3,7 +3,7 @@ __pycache__/
 *.egg-info/
 dist/
 .env
-data/
+/data/
 results/
 .venv/
 *.parquet
