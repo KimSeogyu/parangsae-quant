@@ -34,14 +34,13 @@ def test_combine_alphas_ignores_non_universe():
 def test_apply_constraints_clips_position():
     raw_weights = {"BTC": 0.15, "ETH": 0.03, "SOL": -0.08}
     volatility = {"BTC": 0.02, "ETH": 0.03, "SOL": 0.05}
-    risk_halt = False
 
     result = apply_constraints(
         raw_weights=raw_weights,
         volatility=volatility,
         max_position_pct=0.05,
         max_total_exposure=1.0,
-        risk_halt=risk_halt,
+        risk_scale=1.0,
     )
 
     for w in result.values():
@@ -55,7 +54,7 @@ def test_apply_constraints_risk_halt():
         volatility={"BTC": 0.02},
         max_position_pct=0.05,
         max_total_exposure=1.0,
-        risk_halt=True,
+        risk_scale=0.0,
     )
     assert result["BTC"] == 0.0
 

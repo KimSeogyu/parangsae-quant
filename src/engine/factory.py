@@ -137,13 +137,30 @@ def build_backtest_engine(settings: Settings) -> BacktestEngine:
         alpha_weights[alpha_name] = alpha_cfg.weight
 
     # Risk Model
+    risk_cfg = settings.risk
     engine.add_actor(
         RiskModel(
             RiskModelConfig(
-                max_position_pct=settings.risk.max_position_pct,
-                max_drawdown=settings.risk.max_drawdown,
-                max_total_exposure=settings.risk.max_total_exposure,
-                volatility_window=settings.risk.volatility_window,
+                btc_regime_enabled=risk_cfg.btc_regime.enabled,
+                ema_period_hours=risk_cfg.btc_regime.ema_period_hours,
+                regime_min_exposure=risk_cfg.btc_regime.min_exposure,
+                regime_transition_lower=risk_cfg.btc_regime.transition_lower,
+                regime_transition_upper=risk_cfg.btc_regime.transition_upper,
+                vol_targeting_enabled=risk_cfg.volatility_targeting.enabled,
+                target_vol_annual=risk_cfg.volatility_targeting.target_vol_annual,
+                vol_lookback_hours=risk_cfg.volatility_targeting.lookback_hours,
+                vol_max_scale=risk_cfg.volatility_targeting.max_scale,
+                vol_min_scale=risk_cfg.volatility_targeting.min_scale,
+                corr_enabled=risk_cfg.correlation_monitor.enabled,
+                corr_window_hours=risk_cfg.correlation_monitor.window_hours,
+                corr_sample_coins=risk_cfg.correlation_monitor.sample_coins,
+                corr_update_interval_hours=risk_cfg.correlation_monitor.update_interval_hours,
+                corr_threshold_high=risk_cfg.correlation_monitor.threshold_high,
+                corr_threshold_crisis=risk_cfg.correlation_monitor.threshold_crisis,
+                corr_min_exposure=risk_cfg.correlation_monitor.min_exposure,
+                dd_enabled=risk_cfg.drawdown_scaling.enabled,
+                dd_tiers=risk_cfg.drawdown_scaling.tiers,
+                min_total_scale=risk_cfg.drawdown_scaling.min_total_scale,
             ),
         ),
     )
@@ -153,9 +170,9 @@ def build_backtest_engine(settings: Settings) -> BacktestEngine:
         PortfolioConstruction(
             PortfolioConstructionConfig(
                 rebalance_interval_hours=settings.portfolio.rebalance_interval_hours,
-                min_trade_threshold=settings.portfolio.min_trade_threshold,
-                max_position_pct=settings.risk.max_position_pct,
-                max_total_exposure=settings.risk.max_total_exposure,
+                min_trade_threshold=settings.portfolio.min_weight_change,
+                max_position_pct=settings.portfolio.max_position_other,
+                max_total_exposure=1.0,
                 alpha_weights=alpha_weights,
                 order_id_tag="PC001",
             ),

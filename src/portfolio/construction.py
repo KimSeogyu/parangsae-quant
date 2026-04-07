@@ -40,9 +40,9 @@ def apply_constraints(
     volatility: dict[str, float],
     max_position_pct: float,
     max_total_exposure: float,
-    risk_halt: bool,
+    risk_scale: float = 1.0,
 ) -> dict[str, float]:
-    if risk_halt:
+    if risk_scale <= 0:
         return {s: 0.0 for s in raw_weights}
 
     inv_vol_weights = {}
@@ -119,10 +119,15 @@ class PortfolioConstruction(Strategy):
             self._alpha_scores.setdefault(score.name, {}).update(score.scores)
         elif signal_type == "RiskState":
             self._risk_state = RiskState(
-                volatility=data["volatility"],
-                drawdown=data["drawdown"],
-                total_exposure=data["total_exposure"],
-                risk_halt=data["risk_halt"],
+                risk_scale=data.get("risk_scale", 1.0),
+                regime_scale=data.get("regime_scale", 1.0),
+                vol_scale=data.get("vol_scale", 1.0),
+                corr_scale=data.get("corr_scale", 1.0),
+                dd_scale=data.get("dd_scale", 1.0),
+                drawdown=data.get("drawdown", 0.0),
+                portfolio_vol=data.get("portfolio_vol", 0.0),
+                avg_correlation=data.get("avg_correlation", 0.0),
+                volatility=data.get("volatility", {}),
             )
         elif signal_type == "UniverseState":
             state = UniverseState(
@@ -164,8 +169,8 @@ class PortfolioConstruction(Strategy):
             raw_weights=combined,
             volatility=self._risk_state.volatility,
             max_position_pct=self.config.max_position_pct,
-            max_total_exposure=self.config.max_total_exposure,
-            risk_halt=self._risk_state.risk_halt,
+            max_total_exposure=self.config.max_total_exposure * self._risk_state.risk_scale,
+            risk_scale=self._risk_state.risk_scale,
         )
 
         current_weights = self._get_current_weights()
