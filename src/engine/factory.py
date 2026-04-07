@@ -13,6 +13,7 @@ from nautilus_trader.model.objects import Money
 
 from src.config.models import Settings
 from src.data.catalog import load_bars_from_parquet
+from src.data.instruments import load_instruments
 from src.portfolio.construction import PortfolioConstruction, PortfolioConstructionConfig
 from src.risk.model import RiskModel, RiskModelConfig
 from src.universe.model import UniverseModel, UniverseModelConfig
@@ -38,8 +39,8 @@ def _import_class(module_path: str):
     return getattr(module, class_name)
 
 
-def _create_instrument(symbol: str, market_type: str):
-    """Create a Nautilus instrument for known Binance symbols using TestInstrumentProvider."""
+def _create_instrument_fallback(symbol: str, market_type: str):
+    """Fallback: create instrument from TestInstrumentProvider for known symbols."""
     from nautilus_trader.test_kit.providers import TestInstrumentProvider
 
     provider_map = {
@@ -76,9 +77,16 @@ def build_backtest_engine(settings: Settings) -> BacktestEngine:
         if not data_dir.exists():
             continue
 
+        # Try dynamic instruments from saved market info, fall back to test providers
+        dynamic_instruments = load_instruments(settings.data.storage_path, market_type)
+
         for parquet_file in sorted(data_dir.glob("*.parquet")):
+            if parquet_file.stem.startswith("_"):
+                continue  # skip metadata files like _instruments.json
             symbol = parquet_file.stem
-            instrument = _create_instrument(symbol, market_type)
+            instrument = dynamic_instruments.get(symbol) or _create_instrument_fallback(
+                symbol, market_type
+            )
             if instrument is None:
                 continue
             engine.add_instrument(instrument)

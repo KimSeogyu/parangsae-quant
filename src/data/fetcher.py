@@ -6,6 +6,8 @@ from pathlib import Path
 import ccxt.async_support as ccxt_async
 import pandas as pd
 
+from src.data.instruments import ccxt_symbol_to_file_name, save_market_info
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,8 +54,11 @@ async def fetch_all_symbols(
         ]
         logger.info(f"Found {len(symbols)} {market_type} symbols")
 
+        # Save instrument metadata for later Nautilus instrument creation
+        save_market_info(exchange.markets, market_type, storage_path)
+
         for symbol in symbols:
-            safe_name = symbol.replace("/", "").replace(":", "-")
+            safe_name = ccxt_symbol_to_file_name(symbol, market_type)
             out_path = Path(storage_path) / market_type / f"{safe_name}.parquet"
 
             symbol_since = since_ms
