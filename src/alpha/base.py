@@ -19,7 +19,7 @@ class BaseAlphaModel(Actor):
     def __init__(self, config: BaseAlphaConfig) -> None:
         super().__init__(config)
         self._close_buffers: dict[str, list[float]] = defaultdict(list)
-        self._max_buffer: int = 500
+        self._max_buffer: int = 1200
 
     def on_start(self) -> None:
         for instrument in self.cache.instruments():
