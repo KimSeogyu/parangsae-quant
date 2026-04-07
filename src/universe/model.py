@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
 from nautilus_trader.common.actor import Actor
@@ -92,12 +93,18 @@ class UniverseModel(Actor):
         )
         self._universe = new_universe
 
+        state = UniverseState(
+            current=frozenset(new_universe),
+            added=added,
+            removed=removed,
+        )
         self.publish_signal(
             name="UNIVERSE",
-            value=UniverseState(
-                current=frozenset(new_universe),
-                added=added,
-                removed=removed,
-            ),
+            value=json.dumps({
+                "type": "UniverseState",
+                "current": list(state.current),
+                "added": list(state.added),
+                "removed": list(state.removed),
+            }),
             ts_event=0,
         )

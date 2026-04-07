@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 
@@ -83,25 +84,34 @@ class RiskModel(Actor):
 
         account = None
         try:
+            from nautilus_trader.model.currencies import USDT
             from nautilus_trader.model.identifiers import Venue
             account = self.portfolio.account(Venue("BINANCE"))
         except Exception:
             pass
 
         if account is not None:
-            balance = float(account.balance_total().as_double())
-            self._equity_curve.append(balance)
+            balance_money = account.balance_total(USDT)
+            if balance_money is not None:
+                self._equity_curve.append(float(balance_money.as_double()))
         drawdown = compute_drawdown(self._equity_curve) if self._equity_curve else 0.0
 
         risk_halt = drawdown > self.config.max_drawdown
 
+        state = RiskState(
+            volatility=volatility,
+            drawdown=drawdown,
+            total_exposure=0.0,
+            risk_halt=risk_halt,
+        )
         self.publish_signal(
             name="RISK",
-            value=RiskState(
-                volatility=volatility,
-                drawdown=drawdown,
-                total_exposure=0.0,
-                risk_halt=risk_halt,
-            ),
+            value=json.dumps({
+                "type": "RiskState",
+                "volatility": state.volatility,
+                "drawdown": state.drawdown,
+                "total_exposure": state.total_exposure,
+                "risk_halt": state.risk_halt,
+            }),
             ts_event=ts_event,
         )

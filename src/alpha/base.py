@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
 from nautilus_trader.common.actor import Actor
@@ -39,8 +40,9 @@ class BaseAlphaModel(Actor):
         raise NotImplementedError
 
     def _publish_if_ready(self, symbol: str, alpha: float, ts_event: int) -> None:
+        score = AlphaScore(name=self.config.alpha_name, scores={symbol: alpha})
         self.publish_signal(
             name="ALPHA",
-            value=AlphaScore(name=self.config.alpha_name, scores={symbol: alpha}),
+            value=json.dumps({"type": "AlphaScore", "name": score.name, "scores": score.scores}),
             ts_event=ts_event,
         )

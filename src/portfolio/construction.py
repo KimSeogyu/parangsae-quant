@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from nautilus_trader.config import StrategyConfig
@@ -104,20 +105,38 @@ class PortfolioConstruction(Strategy):
             self.subscribe_bars(BarType.from_str(bar_type_str))
 
     def on_signal(self, signal) -> None:
-        value = signal.value
-        match value:
-            case AlphaScore():
-                self._alpha_scores.setdefault(value.name, {}).update(value.scores)
-            case RiskState():
-                self._risk_state = value
-            case UniverseState():
-                self._universe = value.current
-                for symbol_str in value.removed:
-                    try:
-                        iid = InstrumentId.from_str(symbol_str)
-                        self.close_all_positions(iid)
-                    except Exception:
-                        pass
+        raw = signal.value
+        if not isinstance(raw, str):
+            return
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        signal_type = data.get("type")
+        if signal_type == "AlphaScore":
+            score = AlphaScore(name=data["name"], scores=data["scores"])
+            self._alpha_scores.setdefault(score.name, {}).update(score.scores)
+        elif signal_type == "RiskState":
+            self._risk_state = RiskState(
+                volatility=data["volatility"],
+                drawdown=data["drawdown"],
+                total_exposure=data["total_exposure"],
+                risk_halt=data["risk_halt"],
+            )
+        elif signal_type == "UniverseState":
+            state = UniverseState(
+                current=frozenset(data["current"]),
+                added=tuple(data["added"]),
+                removed=tuple(data["removed"]),
+            )
+            self._universe = state.current
+            for symbol_str in state.removed:
+                try:
+                    iid = InstrumentId.from_str(symbol_str)
+                    self.close_all_positions(iid)
+                except Exception:
+                    pass
 
     def on_bar(self, bar: Bar) -> None:
         symbol = str(bar.bar_type.instrument_id)
@@ -159,12 +178,17 @@ class PortfolioConstruction(Strategy):
             self._execute_delta(symbol_str, delta)
 
     def _get_current_weights(self) -> dict[str, float]:
+        from nautilus_trader.model.currencies import USDT
+
         venue = Venue("BINANCE")
         account = self.portfolio.account(venue)
         if account is None:
             return {}
 
-        total_equity = float(account.balance_total().as_double())
+        balance_money = account.balance_total(USDT)
+        if balance_money is None:
+            return {}
+        total_equity = float(balance_money.as_double())
         if total_equity <= 0:
             return {}
 
@@ -189,12 +213,17 @@ class PortfolioConstruction(Strategy):
         if instrument is None:
             return
 
+        from nautilus_trader.model.currencies import USDT
+
         venue = Venue("BINANCE")
         account = self.portfolio.account(venue)
         if account is None:
             return
 
-        total_equity = float(account.balance_total().as_double())
+        balance_money = account.balance_total(USDT)
+        if balance_money is None:
+            return
+        total_equity = float(balance_money.as_double())
         notional = abs(delta) * total_equity
 
         last_price = self._last_prices.get(symbol_str, 0.0)
@@ -213,5 +242,6 @@ class PortfolioConstruction(Strategy):
         self.submit_order(order)
 
     def on_stop(self) -> None:
-        self.cancel_all_orders()
-        self.close_all_positions()
+        for instrument in self.cache.instruments():
+            self.cancel_all_orders(instrument.id)
+            self.close_all_positions(instrument.id)
