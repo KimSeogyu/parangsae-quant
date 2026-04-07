@@ -7,3 +7,6 @@ dist/
 results/
 .venv/
 *.parquet
+
+parangsae-archive/
+.remember/
