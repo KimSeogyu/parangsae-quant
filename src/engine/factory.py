@@ -166,13 +166,22 @@ def build_backtest_engine(settings: Settings) -> BacktestEngine:
     )
 
     # Portfolio Construction Strategy
+    pc = settings.portfolio
     engine.add_strategy(
         PortfolioConstruction(
             PortfolioConstructionConfig(
-                rebalance_interval_hours=settings.portfolio.rebalance_interval_hours,
-                min_trade_threshold=settings.portfolio.min_weight_change,
-                max_position_pct=settings.portfolio.max_position_other,
-                max_total_exposure=1.0,
+                num_holdings=pc.num_holdings,
+                entry_rank=pc.entry_rank,
+                exit_rank=pc.exit_rank,
+                rebalance_interval_hours=pc.rebalance_interval_hours,
+                min_weight_change=pc.min_weight_change,
+                max_hourly_turnover=pc.max_hourly_turnover,
+                max_daily_turnover=pc.max_daily_turnover,
+                max_position_btc=pc.max_position_btc,
+                max_position_eth=pc.max_position_eth,
+                max_position_other=pc.max_position_other,
+                min_position=pc.min_position,
+                zscore_clip=pc.zscore_clip,
                 alpha_weights=alpha_weights,
                 order_id_tag="PC001",
             ),
