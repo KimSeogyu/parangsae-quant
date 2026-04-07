@@ -1,5 +1,4 @@
 import pytest
-import math
 from src.risk.model import compute_rolling_volatility, compute_drawdown
 
 

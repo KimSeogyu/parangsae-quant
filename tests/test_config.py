@@ -1,4 +1,5 @@
 # tests/test_config.py
+from src.config.loader import load_settings
 from src.config.models import Settings
 
 
@@ -95,9 +96,6 @@ def test_settings_rejects_invalid_exclusion_rank():
     }
     with pytest.raises(ValidationError):
         Settings(**raw)
-
-
-from src.config.loader import load_settings
 
 
 def test_load_settings_from_yaml(tmp_path):
