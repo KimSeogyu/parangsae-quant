@@ -25,6 +25,7 @@ def compute_qm_momentum(
     lookback: int = 336,
     skip: int = 24,
     vol_window: int = 720,
+    fip_enabled: bool = True,
     fip_floor: float = 0.3,
     ts_filter: bool = True,
 ) -> float:
@@ -59,6 +60,9 @@ def compute_qm_momentum(
 
     vol_adj_mom = raw_mom / realized_vol
 
+    if not fip_enabled:
+        return vol_adj_mom
+
     # FIP on daily bars (aggregate hourly to daily by sampling every 24th bar)
     lookback_slice = closes[-(skip + lookback + 1) : -(skip)]
     daily_closes = lookback_slice[::24]
@@ -86,6 +90,7 @@ class QMMomentumAlpha(BaseAlphaModel):
         self._lookback = p.get("lookback_hours", 336)
         self._skip = p.get("skip_hours", 24)
         self._vol_window = p.get("vol_window_hours", 720)
+        self._fip_enabled = p.get("fip_enabled", True)
         self._fip_floor = p.get("fip_floor", 0.3)
         self._ts_filter = p.get("ts_filter", True)
         self._max_buffer = self._skip + max(self._lookback, self._vol_window) + 10
@@ -96,6 +101,7 @@ class QMMomentumAlpha(BaseAlphaModel):
             lookback=self._lookback,
             skip=self._skip,
             vol_window=self._vol_window,
+            fip_enabled=self._fip_enabled,
             fip_floor=self._fip_floor,
             ts_filter=self._ts_filter,
         )

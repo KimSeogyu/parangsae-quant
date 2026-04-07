@@ -81,9 +81,10 @@ class TestQMMomentum:
         """Add noise to make vol higher; alpha should decrease vs smooth trend."""
         np.random.seed(42)
         smooth = _make_trending_up(1100, hourly_drift=0.002)
-        noisy = [p * (1 + np.random.normal(0, 0.03)) for p in smooth]
-        # Force same direction
-        noisy[-25] = smooth[-25]  # anchor skip boundary
+        noisy = [p * (1 + np.random.normal(0, 0.01)) for p in smooth]
+        # Anchor skip boundary and start to ensure positive raw_mom
+        noisy[-(24 + 1)] = smooth[-(24 + 1)]
+        noisy[-(24 + 336 + 1)] = smooth[-(24 + 336 + 1)]
 
         alpha_smooth = compute_qm_momentum(
             smooth, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=True,
@@ -91,6 +92,5 @@ class TestQMMomentum:
         alpha_noisy = compute_qm_momentum(
             noisy, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=True,
         )
-        # Noisy version may be filtered or have lower alpha
-        if alpha_noisy != float("-inf"):
-            assert alpha_smooth > alpha_noisy
+        assert alpha_noisy != float("-inf"), "Noisy series should have positive momentum"
+        assert alpha_smooth > alpha_noisy
