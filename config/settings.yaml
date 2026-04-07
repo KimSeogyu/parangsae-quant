@@ -12,29 +12,82 @@ data:
   storage_path: data/
 
 universe:
-  ranking_metric: quote_volume
+  size: 100
+  ranking_metric: avg_quote_volume_14d
   ranking_window: 336
   inclusion_rank: 100
   exclusion_rank: 150
+  exclude_stablecoins: true
+  min_age_days: 30
 
 alphas:
-  momentum:
+  crypto_qm_momentum:
     enabled: true
-    module: src.alpha.momentum.MomentumAlpha
-    weight: 0.5
+    module: src.alpha.momentum.QMMomentumAlpha
+    weight: 0.75
     params:
-      lookback: 24
+      lookback_hours: 336
+      skip_hours: 24
+      vol_window_hours: 720
+      fip_enabled: true
+      fip_floor: 0.3
+      ts_filter: true
+
+  low_volatility:
+    enabled: true
+    module: src.alpha.low_volatility.LowVolatilityAlpha
+    weight: 0.25
+    params:
+      vol_window_hours: 336
 
 risk:
-  max_position_pct: 0.05
-  max_drawdown: 0.15
-  max_total_exposure: 1.0
-  volatility_window: 168
+  btc_regime:
+    enabled: true
+    ema_period_hours: 4800
+    min_exposure: 0.3
+    transition_lower: 0.90
+    transition_upper: 1.00
+
+  volatility_targeting:
+    enabled: true
+    target_vol_annual: 0.30
+    lookback_hours: 720
+    max_scale: 1.5
+    min_scale: 0.1
+
+  correlation_monitor:
+    enabled: true
+    window_hours: 720
+    sample_coins: 20
+    update_interval_hours: 4
+    threshold_high: 0.70
+    threshold_crisis: 0.85
+    min_exposure: 0.40
+
+  drawdown_scaling:
+    enabled: true
+    tiers:
+      - [0.05, 1.00]
+      - [0.10, 0.75]
+      - [0.15, 0.50]
+      - [0.20, 0.25]
+      - [0.25, 0.00]
+    min_total_scale: 0.05
 
 portfolio:
   initial_capital: 100000
+  num_holdings: 15
+  entry_rank: 12
+  exit_rank: 18
   rebalance_interval_hours: 1
-  min_trade_threshold: 0.001
+  min_weight_change: 0.005
+  max_hourly_turnover: 0.10
+  max_daily_turnover: 0.50
+  max_position_btc: 0.20
+  max_position_eth: 0.15
+  max_position_other: 0.07
+  min_position: 0.01
+  zscore_clip: 3.0
 
 backtest:
   start_date: "2025-04-07"

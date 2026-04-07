@@ -4,7 +4,7 @@ These frozen dataclasses define the contract between components.
 Actors publish these as signal values; Strategy receives and pattern-matches them.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -17,12 +17,20 @@ class AlphaScore:
 
 @dataclass(frozen=True)
 class RiskState:
-    """Published by Risk Model. Consumed by Portfolio Construction."""
+    """Published by Risk Model. Consumed by Portfolio Construction.
 
-    volatility: dict[str, float]  # {instrument_id_str: rolling_vol}
-    drawdown: float
-    total_exposure: float
-    risk_halt: bool
+    risk_scale: multiplicative exposure scalar (0.05-1.5) from all four layers.
+    """
+
+    risk_scale: float  # combined multiplicative scale
+    regime_scale: float  # BTC regime component
+    vol_scale: float  # volatility targeting component
+    corr_scale: float  # correlation monitor component
+    dd_scale: float  # drawdown scaling component
+    drawdown: float  # current drawdown fraction
+    portfolio_vol: float  # realized portfolio vol (annualized)
+    avg_correlation: float  # average pairwise correlation of top coins
+    volatility: dict[str, float] = field(default_factory=dict)  # per-symbol vol
 
 
 @dataclass(frozen=True)
