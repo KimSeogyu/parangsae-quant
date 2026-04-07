@@ -1,0 +1,47 @@
+system:
+  mode: backtest
+  log_level: INFO
+
+data:
+  exchange: binance
+  market_types:
+    - spot
+    - futures
+  timeframe: 1h
+  history_days: 365
+  storage_path: data/
+
+universe:
+  ranking_metric: quote_volume
+  ranking_window: 336
+  inclusion_rank: 100
+  exclusion_rank: 150
+
+alphas:
+  momentum:
+    enabled: true
+    module: src.alpha.momentum.MomentumAlpha
+    weight: 0.5
+    params:
+      lookback: 24
+
+risk:
+  max_position_pct: 0.05
+  max_drawdown: 0.15
+  max_total_exposure: 1.0
+  volatility_window: 168
+
+portfolio:
+  initial_capital: 100000
+  rebalance_interval_hours: 1
+  min_trade_threshold: 0.001
+
+backtest:
+  start_date: "2025-04-07"
+  end_date: "2026-04-07"
+  fee_rate: 0.001
+  slippage_prob: 0.5
+
+binance:
+  api_key: ${BINANCE_API_KEY}
+  api_secret: ${BINANCE_API_SECRET}
