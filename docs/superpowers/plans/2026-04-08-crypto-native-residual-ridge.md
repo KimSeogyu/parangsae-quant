@@ -2,7 +2,7 @@
 
 **PRD**: `parangsae_quant_research_prd_v1_crypto_native.md`
 **Date**: 2026-04-08
-**Status**: MVP Code Complete — 데이터 수집 및 실행 대기 중
+**Status**: MVP executable — manifest-driven runner wired, production-grade expansion pending
 
 ---
 
@@ -13,35 +13,39 @@
 | Phase | Status | Tests | Notes |
 |---|---|---|---|
 | **Task 1**: Config & Project Setup | ✅ Complete | 8/8 | Pydantic models, YAML configs, manifest.csv |
-| **Task 2**: Extended Data Fetcher | ✅ Complete | 9/9 | 1m OHLCV + funding + OI, aggregation, alignment |
+| **Task 2**: Extended Data Fetcher | ✅ Complete | 13/13 | 1m OHLCV + funding + OI + mark_price + orderbook_top1 |
 | **Task 3**: Universe Filter | ✅ Complete | 11/11 | 30 coins, crypto-native only, weekly reconstitution |
 | **Task 4**: Label Pipeline | ✅ Complete | 10/10 | Rolling OLS beta, y20/y60 residual returns |
 | **Task 5**: Feature Pipeline | ✅ Complete | 32/32 | 40 features × 5 blocks, registry |
 | **Task 6**: Feature Preprocessing | ✅ Complete | (included above) | z-score, ±5 clip, median imputation |
 | **Task 7**: Model Pipeline | ✅ Complete | 13/13 | Ridge + walk-forward + 5 baselines |
 | **Task 8**: Portfolio Construction | ✅ Complete | 12/12 | L/S 6+6, beta-neutral, caps |
-| **Task 9**: Execution & Post-fill | ✅ Complete | 17/17 | Passive limit, 5m validation |
-| **Task 10**: Backtest & Analytics | ✅ Complete | 11/11 | Fast/accurate modes, Go/No-Go |
-| **Total** | **10/10 tasks** | **126/126** | **lint clean** |
+| **Task 9**: Execution & Post-fill | ✅ Complete | 17/17 | Passive limit, 5m validation, deterministic execution path |
+| **Task 10**: Backtest & Analytics | ✅ Complete | 19/19 | Fast/accurate modes, Go/No-Go, real CLI entrypoint |
+| **Total** | **10/10 tasks** | **135/135** | **lint clean** |
 
 ### What's Done (Code)
 
 모든 핵심 모듈의 순수 함수(pure function) 구현과 단위 테스트가 완료됨.
-52개 파일, ~4,800줄의 새 코드가 `src/research/` 하위에 추가됨.
+실행 가능한 CLI/backtest runner가 추가됐고, manifest 기반의 broader feature wiring이 연결된 상태다.
+새 코드와 테스트가 `src/research/` 및 `tests/research/` 하위에 추가됐다.
+`tests/research`는 현재 135개 테스트를 통과한다.
 
 ### What's NOT Done Yet (Requires Local Data)
 
 다음 작업들은 실제 Binance 데이터와 API 키가 필요하여 로컬에서 수행해야 함:
 
 1. **데이터 수집**: `scripts/fetch_research_data.py` 실행
-   - 1m OHLCV, funding rate, open interest 수집
-   - 예상 저장 경로: `data/research/{ohlcv_1m, ohlcv_5m, ohlcv_20m, funding, oi}/`
+   - 1m OHLCV, funding rate, open interest, mark price, top-of-book 수집
+   - 예상 저장 경로: `data/research/{ohlcv_1m, ohlcv_5m, ohlcv_20m, funding, oi, mark_price, orderbook_top1}/`
 
-2. **End-to-end 파이프라인 연결**: 개별 모듈은 모두 동작하지만, 실제 데이터를 받아서 전체 파이프라인을 한번에 흐르게 하는 glue code가 `run_research_backtest.py`에 필요
-   - 데이터 로딩 → universe filter → feature 계산 → label 생성 → walk-forward Ridge → portfolio sim → report
-   - 이 부분은 데이터 형태를 보면서 작성하는 것이 정확
+2. **End-to-end 파이프라인 확장**: `run_research_backtest.py`는 실제 CLI로 동작하고 manifest-driven feature assembly를 사용한다
+   - 데이터 로딩 → manifest 기반 feature 계산 → label 생성 → walk-forward Ridge → portfolio sim → report
+   - 실데이터 기준 커버리지/품질 튜닝과 PRD 수준 fidelity 검증은 다음 단계
 
-3. **Backtest engine 실제 실행**: `engine.py`의 `run_fast_backtest()`와 `run_accurate_backtest()`는 스캐폴딩 수준. 실제 데이터의 symbol/timestamp 구조에 맞춰 portfolio simulation 루프를 보강해야 함
+3. **Backtest engine 확장**: `engine.py`는 더 이상 스캐폴딩이 아니며 deterministic execution path를 사용한다
+   - 현재는 runner가 제공하는 parquet-derived 입력 기준으로 동작
+   - PRD 전체 시뮬레이션 fidelity는 추가 확장 필요
 
 4. **Jupyter 리포트 노트북**: PRD에서 권장하는 `analytics/report.ipynb` (성과 시각화, feature block contribution, coefficient stability)
 
@@ -124,7 +128,7 @@ scripts/
 ├── fetch_research_data.py             # Data collection entry point
 └── run_research_backtest.py           # Backtest entry point
 
-tests/research/                        # 126 tests across 9 test files
+tests/research/                        # 135 tests across 11 test files
 ├── test_config.py                     # Config parsing, validation (8 tests)
 ├── test_data.py                       # Aggregation, alignment, walk-forward (9 tests)
 ├── test_universe_filter.py            # All filter stages + reconstitution (11 tests)
@@ -133,7 +137,9 @@ tests/research/                        # 126 tests across 9 test files
 ├── test_models.py                     # Ridge, baselines, walk-forward (13 tests)
 ├── test_portfolio_ls.py               # L/S selection, weights, caps, hedge (12 tests)
 ├── test_execution.py                  # Passive fill, slippage, post-fill (17 tests)
-└── test_analytics.py                  # Metrics, regime, Go/No-Go (11 tests)
+├── test_analytics.py                  # Metrics, regime, Go/No-Go (11 tests)
+├── test_backtest_engine.py            # Deterministic fast/accurate engine coverage
+└── test_runner.py                     # Manifest-driven runner / CLI input prep
 ```
 
 ---
@@ -146,15 +152,15 @@ PRD 각 섹션이 코드의 어디에 매핑되는지:
 |---|---|---|
 | §1. 제품 정의 | — | N/A (문서) |
 | §2. 유니버스 규칙 | `universe/filter.py`, `config/universe.yaml` | ✅ 전체 구현 |
-| §3. 데이터 사양 | `data/fetcher.py`, `data/aggregator.py`, `data/alignment.py` | ✅ 구조 구현, 실행 대기 |
+| §3. 데이터 사양 | `data/fetcher.py`, `data/aggregator.py`, `data/alignment.py` | ✅ 구조 구현 + mark_price/orderbook_top1 저장 |
 | §4. 라벨과 비교 기준 | `labels/beta.py`, `labels/residual.py`, `models/baselines.py` | ✅ 전체 구현 |
 | §5. 피처 사양 (40개) | `features/{relative,trend,liquidity,derivatives,risk_features}.py` | ✅ 40/40 구현 |
 | §6. 모델 사양 | `models/ridge.py`, `models/walkforward.py`, `features/preprocess.py` | ✅ 전체 구현 |
 | §7. 포트폴리오 구성 | `portfolio/construction.py` | ✅ 전체 구현 |
 | §8. 실행 사양 | `execution/passive.py`, `execution/postfill.py` | ✅ 전체 구현 |
-| §9. 백테스트 엔진 규칙 | `backtest/engine.py`, `backtest/fast.py`, `backtest/accurate.py` | ✅ 스캐폴딩, 데이터 연결 필요 |
+| §9. 백테스트 엔진 규칙 | `backtest/engine.py`, `backtest/fast.py`, `backtest/accurate.py` | ✅ deterministic fast/accurate modes |
 | §10. 성공 기준 | `analytics/report.py` (Go/No-Go evaluation) | ✅ 전체 구현 |
-| §11. 빌드 로드맵 | 이 문서 | ✅ Task 1-10 완료 |
+| §11. 빌드 로드맵 | 이 문서 | ✅ Task 1-10 완료, CLI runner 연결 |
 | §12. Phase 2 확장 | — | ❌ MVP 이후 |
 | Appendix A. 파라미터 | `config/model.yaml`, `src/research/config.py` | ✅ 전체 반영 |
 

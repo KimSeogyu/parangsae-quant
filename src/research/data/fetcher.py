@@ -1,7 +1,8 @@
 """Extended data fetcher for the research pipeline.
 
-Fetches 1m OHLCV, funding rates, open interest, mark price, and orderbook
-snapshots via CCXT. Stores each dataset as parquet under data/research/.
+Fetches 1m OHLCV, funding rates, open interest, mark-price history, and
+top-of-book snapshots via CCXT. Stores each dataset as parquet under
+data/research/.
 
 PRD Section 3: Data Specification
 """
@@ -91,6 +92,14 @@ def funding_to_dataframe(raw: list[dict]) -> pd.DataFrame:
     return df
 
 
+def mark_price_to_dataframe(raw: list[dict]) -> pd.DataFrame:
+    """Extract mark/index price history from funding history payloads."""
+    df = funding_to_dataframe(raw)
+    if df.empty:
+        return df
+    return df[["mark_price", "index_price"]].dropna(how="all")
+
+
 # ---------------------------------------------------------------------------
 # Open Interest
 # ---------------------------------------------------------------------------
@@ -120,12 +129,17 @@ def oi_to_dataframe(raw: list[dict]) -> pd.DataFrame:
 # Orderbook Snapshot (top-of-book)
 # ---------------------------------------------------------------------------
 
-def orderbook_to_record(ob: dict, ts_ms: int) -> dict:
+def orderbook_to_record(
+    ob: dict,
+    ts_ms: int,
+    timestamp_source: str = "exchange_response",
+) -> dict:
     """Extract top-of-book from CCXT orderbook response."""
     bids = ob.get("bids", [])
     asks = ob.get("asks", [])
     return {
         "timestamp": pd.Timestamp(ts_ms, unit="ms", tz="UTC"),
+        "timestamp_source": timestamp_source,
         "best_bid": bids[0][0] if bids else None,
         "best_bid_size": bids[0][1] if bids else None,
         "best_ask": asks[0][0] if asks else None,
@@ -136,6 +150,34 @@ def orderbook_to_record(ob: dict, ts_ms: int) -> dict:
             else None
         ),
     }
+
+
+def orderbook_to_dataframe(
+    ob: dict,
+    ts_ms: int,
+    timestamp_source: str = "exchange_response",
+) -> pd.DataFrame:
+    """Convert a single orderbook snapshot to a timestamp-indexed DataFrame."""
+    record = orderbook_to_record(ob, ts_ms, timestamp_source=timestamp_source)
+    return pd.DataFrame([record]).set_index("timestamp").sort_index()
+
+
+def resolve_orderbook_timestamp_ms(
+    orderbook: dict,
+    fallback_ms: int | None = None,
+) -> tuple[int, str]:
+    """Resolve the best timestamp for an orderbook snapshot.
+
+    Preference order:
+    1. Exchange-provided orderbook timestamp
+    2. Exchange clock supplied by caller
+    3. Current UTC clock
+    """
+    if orderbook.get("timestamp") is not None:
+        return int(orderbook["timestamp"]), "exchange_response"
+    if fallback_ms is not None:
+        return int(fallback_ms), "exchange_clock"
+    return int(pd.Timestamp.now(tz="UTC").timestamp() * 1000), "local_clock"
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +202,8 @@ async def fetch_research_data(
         "ohlcv_1m": 0,
         "funding": 0,
         "oi": 0,
+        "mark_price": 0,
+        "orderbook_top1": 0,
     }
 
     try:
@@ -216,6 +260,7 @@ async def fetch_research_data(
 
             # --- Funding Rate ---
             funding_path = storage_path / "funding" / f"{safe}.parquet"
+            mark_price_path = storage_path / "mark_price" / f"{safe}.parquet"
             try:
                 funding_raw = await exchange.fetch_funding_rate_history(
                     symbol, since=since_ms, limit=1000
@@ -225,6 +270,11 @@ async def fetch_research_data(
                     if not df_funding.empty:
                         save_parquet(df_funding, funding_path)
                         counts["funding"] += len(df_funding)
+
+                    df_mark_price = mark_price_to_dataframe(funding_raw)
+                    if not df_mark_price.empty:
+                        save_parquet(df_mark_price, mark_price_path)
+                        counts["mark_price"] += len(df_mark_price)
             except Exception as e:
                 logger.warning(f"Funding fetch failed for {symbol}: {e}")
 
@@ -242,6 +292,19 @@ async def fetch_research_data(
                             counts["oi"] += len(df_oi)
             except Exception as e:
                 logger.warning(f"OI fetch failed for {symbol}: {e}")
+
+            # --- Top-of-book orderbook snapshot ---
+            orderbook_path = storage_path / "orderbook_top1" / f"{safe}.parquet"
+            try:
+                ob = await exchange.fetch_order_book(symbol, limit=5)
+                fallback_ms = exchange.milliseconds() if hasattr(exchange, "milliseconds") else None
+                ts_ms, timestamp_source = resolve_orderbook_timestamp_ms(ob, fallback_ms)
+                df_orderbook = orderbook_to_dataframe(ob, ts_ms, timestamp_source=timestamp_source)
+                if not df_orderbook.empty and df_orderbook[["best_bid", "best_ask"]].notna().any(axis=None):
+                    save_parquet(df_orderbook, orderbook_path)
+                    counts["orderbook_top1"] += len(df_orderbook)
+            except Exception as e:
+                logger.warning(f"Orderbook fetch failed for {symbol}: {e}")
 
     finally:
         await exchange.close()

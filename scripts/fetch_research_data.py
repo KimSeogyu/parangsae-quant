@@ -1,4 +1,6 @@
-"""Fetch extended research data (1m OHLCV, funding, OI) for the research pipeline.
+"""Fetch extended research data for the research pipeline.
+
+Persists 1m OHLCV, funding, OI, mark-price history, and top-of-book snapshots.
 
 Usage:
     uv run python scripts/fetch_research_data.py
@@ -20,6 +22,8 @@ async def main():
     settings = load_research_settings()
     logger.info("Fetching research data for crypto-native residual ridge pipeline")
     logger.info(f"Target: top {settings.universe.liquidity.top_n} coins")
+    logger.info("Datasets: ohlcv_1m/5m/20m, funding, oi, mark_price, orderbook_top1")
+    logger.info("Orderbook timestamps: exchange response first, then exchange clock fallback")
 
     # Calculate since_ms from training window requirement
     import time
