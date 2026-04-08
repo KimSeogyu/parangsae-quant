@@ -1,0 +1,73 @@
+# Model configuration for crypto-native residual ridge strategy
+# PRD Section 6: Model Specification + Appendix A
+
+data:
+  research_bar_minutes: 5
+  decision_bar_minutes: 20
+  base_bar_minutes: 1
+
+labels:
+  primary_horizon_minutes: 20
+  secondary_horizon_minutes: 60
+  beta_windows_weeks: [1, 2]
+  primary_weight: 0.7
+  secondary_weight: 0.3
+
+training:
+  train_window_days: 90
+  validation_window_days: 14
+  embargo_minutes: 60
+  retrain_cadence_days: 1
+
+ridge:
+  alpha_grid: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+  target_metric: rank_ic
+  normalize: true
+  fit_intercept: true
+
+preprocessing:
+  zscore_method: cross_sectional
+  clip: 5.0
+  missing_fill: cross_sectional_median
+  min_coverage: 0.80
+
+portfolio:
+  direction: long_short
+  gross: 1.0
+  net_cap: 0.15
+  entry_bucket_pct: 0.20
+  exit_bucket_pct: 0.35
+  long_count: 6
+  short_count: 6
+  rebalance_minutes: 20
+  weight_formula: "clip(score_z, 2) / rvol_1d"
+  single_name_cap: 0.12
+  sector_soft_cap: 0.30
+  btc_beta_cap: 0.10
+  score_clip: 2.0
+
+execution:
+  mode: passive_limit
+  requote_interval_seconds: 60
+  max_requotes: 2
+  requote_tick_step: 1
+  unfilled_cancel_seconds: 180
+  emergency_taker: true
+
+postfill:
+  check_horizon_minutes: 5
+  reduce_threshold: 0.0
+  reduce_pct: 0.50
+  close_threshold_vol_mult: -0.25
+  close_pct: 1.0
+  spread_multiple: 2.0
+
+backtest:
+  modes: [fast, accurate]
+  maker_fee_bps: 2.0
+  taker_fee_bps: 5.0
+  funding_realized: true
+
+costs:
+  maker_fee_bps: 2.0
+  taker_fee_bps: 5.0

@@ -1,0 +1,46 @@
+# Universe configuration for crypto-native residual ridge strategy
+# PRD Section 2: Universe Rules
+
+inclusion:
+  asset_type: native_crypto_perpetual
+  min_listing_days: 180
+  min_funding_oi_coverage: 0.95
+  max_spread_bps: 20.0
+
+exclusion:
+  categories:
+    - stablecoin
+    - tokenized_gold
+    - tokenized_bond
+    - tokenized_tbill
+    - tokenized_stock
+    - tokenized_etf
+    - fx_proxy
+    - leveraged_token
+    - inverse_token
+  symbols:
+    - USDCUSDT
+    - USDTUSDT
+    - DAIUSDT
+    - TUSDUSDT
+    - BUSDUSDT
+    - FDUSDUSDT
+    - PAXGUSDT
+    - XAUTUSDT
+
+liquidity:
+  metric: median_24h_quote_volume_30d
+  top_n: 30
+
+reconstitution:
+  frequency: weekly
+  day_of_week: monday
+  hour_utc: 0
+
+sector_map:
+  l1: [BTC, ETH, SOL, ADA, AVAX, NEAR, SUI, APT, SEI, TON, DOT, ATOM]
+  l2: [ARB, OP, MATIC, STRK, ZK, MANTA, BLAST]
+  defi: [UNI, AAVE, MKR, CRV, DYDX, SNX, COMP, SUSHI, PENDLE, JUP]
+  infra: [LINK, FIL, AR, RENDER, GRT, PYTH, WLD, TAO]
+  meme: [DOGE, SHIB, PEPE, WIF, FLOKI, BONK]
+  gaming: [AXS, SAND, MANA, IMX, GALA, RONIN]

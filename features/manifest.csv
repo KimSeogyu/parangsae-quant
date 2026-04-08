@@ -1,0 +1,41 @@
+name,block,function,params,description
+beta_btc_1w,relative,compute_beta_btc,window_weeks=1,BTC beta over 1 week of 5m returns
+beta_btc_2w,relative,compute_beta_btc,window_weeks=2,BTC beta over 2 weeks of 5m returns
+resid_mom_1h,relative,compute_resid_momentum,horizon_bars=12,Residual momentum over 1 hour
+resid_mom_4h,relative,compute_resid_momentum,horizon_bars=48,Residual momentum over 4 hours
+resid_mom_1d,relative,compute_resid_momentum,horizon_bars=288,Residual momentum over 1 day
+resid_z_1h,relative,compute_resid_zscore,horizon_bars=12,Residual z-score over 1 hour
+resid_z_4h,relative,compute_resid_zscore,horizon_bars=48,Residual z-score over 4 hours
+resid_rsi_14,relative,compute_resid_rsi,period=14,RSI of residual returns (14 bars)
+mom_1h,trend,compute_momentum,horizon_bars=12,Raw log momentum 1 hour
+mom_4h,trend,compute_momentum,horizon_bars=48,Raw log momentum 4 hours
+mom_1d,trend,compute_momentum,horizon_bars=288,Raw log momentum 1 day
+mom_4h_voladj,trend,compute_momentum_voladj,horizon_bars=48,Vol-adjusted momentum 4h
+mom_1d_voladj,trend,compute_momentum_voladj,horizon_bars=288,Vol-adjusted momentum 1d
+fip_like_1d,trend,compute_fip_like,horizon_bars=288,Fraction of interval positive (daily)
+trend_linearity_1d,trend,compute_trend_linearity,horizon_bars=288,R-squared of price vs time (1d)
+wickiness_1d,trend,compute_wickiness,horizon_bars=288,Average wick ratio over 1 day
+qvol_z_1d,liquidity,compute_qvol_zscore,horizon_bars=288,Quote volume z-score 1 day
+qvol_z_7d,liquidity,compute_qvol_zscore,horizon_bars=2016,Quote volume z-score 7 days
+amihud_1d,liquidity,compute_amihud,horizon_bars=288,Amihud illiquidity ratio 1 day
+vwap_dev_1h,liquidity,compute_vwap_deviation,horizon_bars=12,Price deviation from VWAP 1h
+spread_bps,liquidity,compute_spread_bps,,Current spread in basis points
+spread_z_1d,liquidity,compute_spread_zscore,horizon_bars=288,Spread z-score over 1 day
+depth_top1_usd,liquidity,compute_depth_top1,,Top-of-book depth in USD
+ob_imbalance_1m,liquidity,compute_ob_imbalance,,Order book bid/ask imbalance
+funding,derivatives,compute_funding_rate,,Current funding rate
+funding_z_7d,derivatives,compute_funding_zscore,horizon_bars=2016,Funding rate z-score 7 days
+funding_change_1d,derivatives,compute_funding_change,horizon_bars=288,Funding rate change 1 day
+oi_change_1h,derivatives,compute_oi_change,horizon_bars=12,Open interest change 1 hour
+oi_change_1d,derivatives,compute_oi_change,horizon_bars=288,Open interest change 1 day
+oi_to_vol,derivatives,compute_oi_to_volume,,OI-to-volume ratio
+basis,derivatives,compute_basis,,Futures-spot basis
+basis_z_7d,derivatives,compute_basis_zscore,horizon_bars=2016,Basis z-score 7 days
+rvol_1h,risk,compute_realized_vol,horizon_bars=12,Realized volatility 1 hour
+rvol_1d,risk,compute_realized_vol,horizon_bars=288,Realized volatility 1 day
+downside_vol_1d,risk,compute_downside_vol,horizon_bars=288,Downside volatility 1 day
+corr_btc_1d,risk,compute_corr_btc,horizon_bars=288,Correlation with BTC 1 day
+btc_trend_4h,risk,compute_btc_trend,horizon_bars=48,BTC price trend over 4 hours
+alt_breadth_4h,risk,compute_alt_breadth,horizon_bars=48,Alt breadth (pct positive) 4h
+median_funding_breadth,risk,compute_median_funding_breadth,,Median funding rate across universe
+xs_corr_1d,risk,compute_cross_sectional_corr,horizon_bars=288,Cross-sectional avg pairwise corr 1d

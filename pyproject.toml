@@ -9,6 +9,10 @@ dependencies = [
     "pyyaml",
     "pandas",
     "pyarrow",
+    "scikit-learn>=1.5",
+    "statsmodels>=0.14",
+    "scipy>=1.14",
+    "numpy",
 ]
 
 [project.optional-dependencies]
