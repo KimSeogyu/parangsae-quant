@@ -81,6 +81,52 @@ All components use the string format `"{instrument_id}-1-HOUR-LAST-EXTERNAL"` wh
 
 Market data is stored as parquet files under `data/{spot,futures}/{SYMBOL}.parquet`. Instrument metadata is in `data/{spot,futures}/_instruments.json`.
 
+## Research Pipeline (PRD v1: Crypto-Native Residual Ridge)
+
+A separate ML research pipeline lives under `src/research/`, implementing the PRD (`parangsae_quant_research_prd_v1_crypto_native.md`). It does NOT use NautilusTrader — it's a standalone pandas/scikit-learn pipeline.
+
+### Key Differences from Main System
+
+| | Main (`src/`) | Research (`src/research/`) |
+|---|---|---|
+| Strategy | Rule-based momentum | Ridge regression on BTC residuals |
+| Timeframe | 1H bars | 5m research / 20m decision |
+| Direction | Long-only | Long/Short 6+6 |
+| Universe | 100 coins | 30 coins, crypto-native only |
+| Execution | Market orders | Passive limit + 5m post-fill |
+
+### Research Config
+
+- `config/universe.yaml` — Universe inclusion/exclusion rules, sector map
+- `config/model.yaml` — All model parameters (PRD Appendix A)
+- `features/manifest.csv` — 40 feature definitions
+
+### Research Signal Flow
+
+```
+Data (1m OHLCV, funding, OI)
+    ↓
+Universe Filter (30 crypto-native coins, weekly)
+    ↓
+Feature Pipeline (40 features, 5 blocks)
+    ↓ cross-sectional z-score, ±5 clip
+Labels (rolling OLS beta → y20/y60 residual returns)
+    ↓
+Ridge Model (walk-forward: 90d train, 14d val, 60m embargo)
+    ↓ score = 0.7 * ŷ20 + 0.3 * ŷ60
+Portfolio (L/S 6+6, beta-neutral, 12% cap)
+    ↓
+Execution Sim (passive limit + 5m post-fill validation)
+    ↓
+Analytics (Sharpe, rank IC, regime breakdown, Go/No-Go)
+```
+
+### Running Research Tests
+
+```bash
+uv run pytest tests/research/ -v   # 126 tests
+```
+
 ## Conventions
 
 - Python 3.12+, line length 100 (ruff)
