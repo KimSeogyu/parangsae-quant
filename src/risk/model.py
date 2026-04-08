@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+
 import numpy as np
 from nautilus_trader.common.actor import Actor
 from nautilus_trader.config import ActorConfig
@@ -107,13 +108,12 @@ def compute_drawdown(equity_curve: list[float]) -> float:
     if len(equity_curve) < 2:
         return 0.0
     peak = equity_curve[0]
-    max_dd = 0.0
+    current_dd = 0.0
     for value in equity_curve:
         peak = max(peak, value)
         if peak > 0:
-            dd = (peak - value) / peak
-            max_dd = max(max_dd, dd)
-    return max_dd
+            current_dd = (peak - value) / peak
+    return current_dd
 
 
 def compute_rolling_volatility(returns: list[float], window: int) -> float:
@@ -138,13 +138,23 @@ def _compute_avg_pairwise_correlation(
     return_buffers: dict[str, list[float]],
     sample_coins: int,
     window: int,
+    liquidity_buffers: dict[str, list[float]] | None = None,
 ) -> float:
-    """Picks top N coins by buffer length, builds numpy correlation matrix,
-    and averages upper triangle."""
-    # Sort by buffer length descending and take top N
+    """Estimate average correlation among the most liquid symbols available."""
+
+    def liquidity_score(symbol: str) -> tuple[float, int]:
+        if liquidity_buffers is None:
+            return (0.0, len(return_buffers[symbol]))
+        recent = liquidity_buffers.get(symbol, [])
+        if not recent:
+            return (0.0, len(return_buffers[symbol]))
+        tail = recent[-window:] if len(recent) >= window else recent
+        return (sum(tail) / len(tail), len(return_buffers[symbol]))
+
+    # Prefer symbols with the highest recent quote volume; break ties by data depth.
     sorted_symbols = sorted(
         return_buffers.keys(),
-        key=lambda s: len(return_buffers[s]),
+        key=liquidity_score,
         reverse=True,
     )
     candidates = sorted_symbols[:sample_coins]
@@ -223,6 +233,7 @@ class RiskModel(Actor):
 
         # Per-symbol return buffers (for correlation and per-symbol vol)
         self._return_buffers: dict[str, list[float]] = defaultdict(list)
+        self._quote_volume_buffers: dict[str, list[float]] = defaultdict(list)
         self._prev_close: dict[str, float] = {}
 
         # Portfolio-level tracking
@@ -261,6 +272,11 @@ class RiskModel(Actor):
                 max_buf = max(self.config.vol_lookback_hours, self.config.corr_window_hours) + 10
                 if len(buf) > max_buf:
                     buf.pop(0)
+        quote_buf = self._quote_volume_buffers[symbol]
+        quote_buf.append(close * float(bar.volume))
+        max_quote_buf = self.config.corr_window_hours + 10
+        if len(quote_buf) > max_quote_buf:
+            quote_buf.pop(0)
         self._prev_close[symbol] = close
 
         current_hour = bar.ts_event // 3_600_000_000_000
@@ -335,6 +351,7 @@ class RiskModel(Actor):
                 self._return_buffers,
                 self.config.corr_sample_coins,
                 self.config.corr_window_hours,
+                liquidity_buffers=self._quote_volume_buffers,
             )
             self._last_corr_hour = current_hour
 

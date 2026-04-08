@@ -1,6 +1,4 @@
-import math
 import numpy as np
-import pytest
 
 from src.alpha.momentum import compute_qm_momentum
 
@@ -21,9 +19,37 @@ def _make_trending_down(n: int, base: float = 100.0, hourly_drift: float = 0.001
     return prices
 
 
+def _make_noisy_trending_up(
+    n: int,
+    base: float = 100.0,
+    hourly_drift: float = 0.001,
+    noise: float = 0.002,
+) -> list[float]:
+    """Generate an upward trend with enough variability for realized vol tests."""
+    rng = np.random.default_rng(42)
+    prices = [base]
+    for _ in range(1, n):
+        prices.append(prices[-1] * (1 + hourly_drift + rng.normal(0, noise)))
+    return prices
+
+
+def _make_noisy_trending_down(
+    n: int,
+    base: float = 100.0,
+    hourly_drift: float = 0.001,
+    noise: float = 0.002,
+) -> list[float]:
+    """Generate a downward trend with enough variability for realized vol tests."""
+    rng = np.random.default_rng(7)
+    prices = [base]
+    for _ in range(1, n):
+        prices.append(prices[-1] * (1 - hourly_drift + rng.normal(0, noise)))
+    return prices
+
+
 class TestQMMomentum:
     def test_positive_trending_produces_positive_alpha(self):
-        closes = _make_trending_up(1100)
+        closes = _make_noisy_trending_up(1100)
         alpha = compute_qm_momentum(
             closes, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=True,
         )
@@ -37,7 +63,7 @@ class TestQMMomentum:
         assert alpha == float("-inf")
 
     def test_ts_filter_disabled_allows_negative(self):
-        closes = _make_trending_down(1100)
+        closes = _make_noisy_trending_down(1100)
         alpha = compute_qm_momentum(
             closes, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=False,
         )
@@ -46,6 +72,13 @@ class TestQMMomentum:
 
     def test_insufficient_data_returns_neg_inf(self):
         closes = [100.0] * 50
+        alpha = compute_qm_momentum(
+            closes, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=True,
+        )
+        assert alpha == float("-inf")
+
+    def test_near_zero_volatility_returns_neg_inf(self):
+        closes = [100.0 * (1.001 ** i) for i in range(1100)]
         alpha = compute_qm_momentum(
             closes, lookback=336, skip=24, vol_window=720, fip_floor=0.3, ts_filter=True,
         )
@@ -80,7 +113,7 @@ class TestQMMomentum:
     def test_vol_adjustment_reduces_high_vol_signal(self):
         """Add noise to make vol higher; alpha should decrease vs smooth trend."""
         np.random.seed(42)
-        smooth = _make_trending_up(1100, hourly_drift=0.002)
+        smooth = _make_noisy_trending_up(1100, hourly_drift=0.002, noise=0.001)
         noisy = [p * (1 + np.random.normal(0, 0.01)) for p in smooth]
         # Anchor skip boundary and start to ensure positive raw_mom
         noisy[-(24 + 1)] = smooth[-(24 + 1)]

@@ -53,10 +53,8 @@ def compute_qm_momentum(
     arr = np.array(vol_slice, dtype=np.float64)
     log_rets = np.diff(np.log(arr))
     realized_vol = float(np.std(log_rets, ddof=1))
-    # Apply minimum vol floor to avoid division by near-zero; use absolute floor rather than
-    # filtering, so strongly trending assets get a capped (high) signal instead of -inf.
-    vol_floor = 1e-5
-    realized_vol = max(realized_vol, vol_floor)
+    if realized_vol < 1e-8:
+        return float("-inf")
 
     vol_adj_mom = raw_mom / realized_vol
 

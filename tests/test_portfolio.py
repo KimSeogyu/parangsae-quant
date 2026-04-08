@@ -1,11 +1,17 @@
 import pytest
+from nautilus_trader.test_kit.providers import TestInstrumentProvider
+
 from src.portfolio.construction import (
-    zscore_and_combine,
-    select_holdings,
     apply_tiered_caps,
-    compute_target_weights,
+    apply_liquidity_caps,
     compute_target_deltas,
+    compute_target_weights,
     apply_turnover_limit,
+    filter_tradeable_deltas,
+    quantize_order_quantity,
+    select_holdings,
+    should_rebalance,
+    zscore_and_combine,
 )
 
 
@@ -140,3 +146,61 @@ class TestTurnoverLimit:
         deltas = {"A": 0.02, "B": 0.01}
         limited = apply_turnover_limit(deltas, max_turnover=0.10)
         assert limited == deltas
+
+    def test_zero_budget_returns_empty_deltas(self):
+        deltas = {"A": 0.02, "B": 0.01}
+        limited = apply_turnover_limit(deltas, max_turnover=0.0)
+        assert limited == {}
+
+
+class TestTradeableDeltas:
+    def test_filters_small_deltas_after_scaling(self):
+        deltas = {"A": 0.004, "B": -0.006}
+        filtered = filter_tradeable_deltas(deltas, threshold=0.005)
+        assert filtered == {"B": -0.006}
+
+
+class TestRebalanceCadence:
+    def test_rebalances_on_first_bar(self):
+        assert should_rebalance(current_hour=10, last_rebalance_hour=-1, interval_hours=3)
+
+    def test_waits_for_interval(self):
+        assert not should_rebalance(current_hour=11, last_rebalance_hour=10, interval_hours=3)
+        assert should_rebalance(current_hour=13, last_rebalance_hour=10, interval_hours=3)
+
+
+class TestOrderQuantization:
+    def test_returns_none_when_quantity_rounds_to_zero(self):
+        instrument = TestInstrumentProvider.adausdt_binance()
+        assert quantize_order_quantity(instrument, 1e-11) is None
+
+    def test_returns_quantity_when_above_minimum_increment(self):
+        instrument = TestInstrumentProvider.adausdt_binance()
+        rounded = quantize_order_quantity(instrument, 1.2)
+        assert rounded is not None
+
+
+class TestLiquidityCaps:
+    def test_caps_weight_by_trailing_quote_volume(self):
+        weights = {"ADAUSDT.BINANCE": 0.20}
+        quote_volume_buffers = {"ADAUSDT.BINANCE": [1000.0] * 24}
+        capped = apply_liquidity_caps(
+            weights,
+            quote_volume_buffers=quote_volume_buffers,
+            total_equity=100_000.0,
+            liquidity_cap_pct=0.01,
+            min_position=0.001,
+        )
+        assert capped["ADAUSDT.BINANCE"] == pytest.approx(0.0024)
+
+    def test_drops_positions_below_minimum_after_liquidity_cap(self):
+        weights = {"ADAUSDT.BINANCE": 0.20}
+        quote_volume_buffers = {"ADAUSDT.BINANCE": [100.0] * 24}
+        capped = apply_liquidity_caps(
+            weights,
+            quote_volume_buffers=quote_volume_buffers,
+            total_equity=100_000.0,
+            liquidity_cap_pct=0.01,
+            min_position=0.01,
+        )
+        assert capped == {}

@@ -45,6 +45,8 @@ class AlphaConfig(BaseModel):
 class BtcRegimeConfig(BaseModel):
     enabled: bool = True
     ema_period_hours: int = 4800
+    use_ema: bool = True
+    max_exposure: float = 1.0
     min_exposure: float = 0.3
     transition_lower: float = 0.90
     transition_upper: float = 1.00
@@ -56,6 +58,7 @@ class VolatilityTargetingConfig(BaseModel):
     lookback_hours: int = 720
     max_scale: float = 1.5
     min_scale: float = 0.1
+    estimator: str = "stddev"
 
     @field_validator("target_vol_annual")
     @classmethod
@@ -95,6 +98,7 @@ class PortfolioConfig(BaseModel):
     num_holdings: int = 15
     entry_rank: int = 12
     exit_rank: int = 18
+    weighting: str = "alpha_x_inv_vol"
     rebalance_interval_hours: int = 1
     min_weight_change: float = 0.005
     max_hourly_turnover: float = 0.10
@@ -103,6 +107,7 @@ class PortfolioConfig(BaseModel):
     max_position_eth: float = 0.15
     max_position_other: float = 0.07
     min_position: float = 0.01
+    liquidity_cap_pct: float = 0.01
     zscore_clip: float = 3.0
 
 

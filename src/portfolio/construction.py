@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import defaultdict
 from decimal import Decimal
 
 import numpy as np
@@ -26,9 +27,21 @@ class PortfolioConstructionConfig(StrategyConfig):
     max_position_eth: float = 0.15
     max_position_other: float = 0.07
     min_position: float = 0.01
+    liquidity_cap_pct: float = 0.01
     zscore_clip: float = 3.0
     alpha_weights: dict[str, float] = {}
     order_id_tag: str = "PC"
+
+
+def should_rebalance(
+    current_hour: int,
+    last_rebalance_hour: int,
+    interval_hours: int,
+) -> bool:
+    """Return True when the configured rebalance interval has elapsed."""
+    if last_rebalance_hour < 0:
+        return True
+    return (current_hour - last_rebalance_hour) >= max(1, interval_hours)
 
 
 def zscore_and_combine(
@@ -211,11 +224,57 @@ def apply_turnover_limit(
     max_turnover: float,
 ) -> dict[str, float]:
     """Scale all deltas proportionally if total abs turnover exceeds limit."""
+    if max_turnover <= 0.0:
+        return {}
     total = sum(abs(v) for v in deltas.values())
     if total <= max_turnover:
         return deltas
     scale = max_turnover / total
     return {sym: v * scale for sym, v in deltas.items()}
+
+
+def filter_tradeable_deltas(
+    deltas: dict[str, float],
+    threshold: float,
+) -> dict[str, float]:
+    """Drop deltas that are too small to trade after turnover scaling."""
+    return {sym: delta for sym, delta in deltas.items() if abs(delta) >= threshold}
+
+
+def quantize_order_quantity(instrument, quantity: float):
+    """Round a target quantity to instrument precision, or skip tiny orders."""
+    if quantity <= 0.0:
+        return None
+    try:
+        rounded_qty = instrument.make_qty(Decimal(str(quantity)))
+    except ValueError:
+        return None
+    if float(rounded_qty) <= 0.0:
+        return None
+    return rounded_qty
+
+
+def apply_liquidity_caps(
+    weights: dict[str, float],
+    quote_volume_buffers: dict[str, list[float]],
+    total_equity: float | None,
+    liquidity_cap_pct: float,
+    min_position: float,
+) -> dict[str, float]:
+    """Cap target weights to a fraction of trailing 24h quote volume."""
+    if total_equity is None or total_equity <= 0.0 or liquidity_cap_pct <= 0.0:
+        return weights
+
+    capped: dict[str, float] = {}
+    for sym, weight in weights.items():
+        recent_quote_volume = quote_volume_buffers.get(sym, [])
+        if recent_quote_volume:
+            trailing_quote_volume = sum(recent_quote_volume[-24:])
+            liquidity_cap = (trailing_quote_volume * liquidity_cap_pct) / total_equity
+            weight = min(weight, liquidity_cap)
+        if weight >= min_position:
+            capped[sym] = weight
+    return capped
 
 
 class PortfolioConstruction(Strategy):
@@ -226,6 +285,7 @@ class PortfolioConstruction(Strategy):
         self._universe: frozenset[str] = frozenset()
         self._last_rebalance_hour: int = -1
         self._last_prices: dict[str, float] = {}
+        self._quote_volume_buffers: dict[str, list[float]] = defaultdict(list)
         self._current_holdings: set[str] = set()
         self._daily_turnover: float = 0.0
         self._last_day: int = -1
@@ -282,11 +342,19 @@ class PortfolioConstruction(Strategy):
     def on_bar(self, bar: Bar) -> None:
         symbol = str(bar.bar_type.instrument_id)
         self._last_prices[symbol] = float(bar.close)
+        quote_volume_buffer = self._quote_volume_buffers[symbol]
+        quote_volume_buffer.append(float(bar.close) * float(bar.volume))
+        if len(quote_volume_buffer) > 24:
+            quote_volume_buffer.pop(0)
 
         current_hour = bar.ts_event // 3_600_000_000_000
-        if current_hour <= self._last_rebalance_hour:
-            return
         if not self._universe:
+            return
+        if not should_rebalance(
+            current_hour=current_hour,
+            last_rebalance_hour=self._last_rebalance_hour,
+            interval_hours=self.config.rebalance_interval_hours,
+        ):
             return
         self._last_rebalance_hour = current_hour
 
@@ -339,6 +407,13 @@ class PortfolioConstruction(Strategy):
             max_eth=cfg.max_position_eth,
             max_other=cfg.max_position_other,
         )
+        target_weights = apply_liquidity_caps(
+            target_weights,
+            quote_volume_buffers=self._quote_volume_buffers,
+            total_equity=self._get_total_equity(),
+            liquidity_cap_pct=cfg.liquidity_cap_pct,
+            min_position=cfg.min_position,
+        )
 
         # 5. Compute deltas with threshold gating
         current_weights = self._get_current_weights()
@@ -355,6 +430,10 @@ class PortfolioConstruction(Strategy):
         remaining_daily = max(0.0, cfg.max_daily_turnover - self._daily_turnover)
         effective_max = min(cfg.max_hourly_turnover, remaining_daily)
         deltas = apply_turnover_limit(deltas, max_turnover=effective_max)
+        deltas = filter_tradeable_deltas(deltas, threshold=cfg.min_weight_change)
+
+        if not deltas:
+            return
 
         # 7. Execute deltas and track daily turnover
         executed_turnover = 0.0
@@ -363,19 +442,25 @@ class PortfolioConstruction(Strategy):
             executed_turnover += abs(delta)
         self._daily_turnover += executed_turnover
 
-    def _get_current_weights(self) -> dict[str, float]:
+    def _get_total_equity(self) -> float | None:
         from nautilus_trader.model.currencies import USDT
 
         venue = Venue("BINANCE")
         account = self.portfolio.account(venue)
         if account is None:
-            return {}
+            return None
 
         balance_money = account.balance_total(USDT)
         if balance_money is None:
-            return {}
+            return None
         total_equity = float(balance_money.as_double())
         if total_equity <= 0:
+            return None
+        return total_equity
+
+    def _get_current_weights(self) -> dict[str, float]:
+        total_equity = self._get_total_equity()
+        if total_equity is None:
             return {}
 
         weights = {}
@@ -399,17 +484,9 @@ class PortfolioConstruction(Strategy):
         if instrument is None:
             return
 
-        from nautilus_trader.model.currencies import USDT
-
-        venue = Venue("BINANCE")
-        account = self.portfolio.account(venue)
-        if account is None:
+        total_equity = self._get_total_equity()
+        if total_equity is None:
             return
-
-        balance_money = account.balance_total(USDT)
-        if balance_money is None:
-            return
-        total_equity = float(balance_money.as_double())
         notional = abs(delta) * total_equity
 
         last_price = self._last_prices.get(symbol_str, 0.0)
@@ -419,8 +496,8 @@ class PortfolioConstruction(Strategy):
         quantity = notional / last_price
         side = OrderSide.BUY if delta > 0 else OrderSide.SELL
 
-        rounded_qty = instrument.make_qty(Decimal(str(quantity)))
-        if float(rounded_qty) <= 0.0:
+        rounded_qty = quantize_order_quantity(instrument, quantity)
+        if rounded_qty is None:
             return
 
         order = self.order_factory.market(

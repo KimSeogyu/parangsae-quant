@@ -1,14 +1,14 @@
-import numpy as np
 import pytest
 
 from src.risk.model import (
+    _compute_avg_pairwise_correlation,
     compute_btc_regime_scale,
-    compute_vol_target_scale,
-    compute_correlation_scale,
-    compute_drawdown_scale,
     compute_combined_risk_scale,
     compute_drawdown,
+    compute_drawdown_scale,
     compute_ema,
+    compute_correlation_scale,
+    compute_vol_target_scale,
 )
 
 
@@ -129,6 +129,33 @@ class TestDrawdown:
     def test_no_loss(self):
         assert compute_drawdown([100, 110, 120]) == 0.0
 
-    def test_simple_drawdown(self):
+    def test_returns_current_drawdown(self):
         dd = compute_drawdown([100, 110, 105, 95, 100])
-        assert dd == pytest.approx(0.1364, abs=0.001)
+        assert dd == pytest.approx((110 - 100) / 110, abs=0.001)
+
+    def test_drawdown_recovers_to_zero_after_new_high(self):
+        dd = compute_drawdown([100, 110, 95, 112])
+        assert dd == 0.0
+
+
+class TestCorrelationSampling:
+    def test_prefers_high_liquidity_symbols(self):
+        return_buffers = {
+            "LOW": [0.05, -0.05, 0.05, -0.05],
+            "HIGH_A": [0.01, 0.02, 0.03, 0.04],
+            "HIGH_B": [0.01, 0.02, 0.03, 0.04],
+        }
+        liquidity_buffers = {
+            "LOW": [10.0, 10.0, 10.0, 10.0],
+            "HIGH_A": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
+            "HIGH_B": [900.0, 900.0, 900.0, 900.0],
+        }
+
+        avg_corr = _compute_avg_pairwise_correlation(
+            return_buffers,
+            sample_coins=2,
+            window=4,
+            liquidity_buffers=liquidity_buffers,
+        )
+
+        assert avg_corr == pytest.approx(1.0)

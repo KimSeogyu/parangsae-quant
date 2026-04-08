@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from src.alpha.low_volatility import compute_low_volatility
 

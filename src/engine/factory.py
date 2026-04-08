@@ -181,6 +181,7 @@ def build_backtest_engine(settings: Settings) -> BacktestEngine:
                 max_position_eth=pc.max_position_eth,
                 max_position_other=pc.max_position_other,
                 min_position=pc.min_position,
+                liquidity_cap_pct=pc.liquidity_cap_pct,
                 zscore_clip=pc.zscore_clip,
                 alpha_weights=alpha_weights,
                 order_id_tag="PC001",

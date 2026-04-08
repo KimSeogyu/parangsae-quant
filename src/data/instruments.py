@@ -7,7 +7,6 @@ import logging
 from decimal import Decimal
 from pathlib import Path
 
-from nautilus_trader.model.currencies import USDT
 from nautilus_trader.model.enums import CurrencyType
 from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
 from nautilus_trader.model.instruments import CryptoPerpetual, CurrencyPair

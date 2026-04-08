@@ -47,6 +47,8 @@ VALID_YAML = {
         "btc_regime": {
             "enabled": True,
             "ema_period_hours": 4800,
+            "use_ema": True,
+            "max_exposure": 1.0,
             "min_exposure": 0.3,
             "transition_lower": 0.90,
             "transition_upper": 1.00,
@@ -57,6 +59,7 @@ VALID_YAML = {
             "lookback_hours": 720,
             "max_scale": 1.5,
             "min_scale": 0.1,
+            "estimator": "stddev",
         },
         "correlation_monitor": {
             "enabled": True,
@@ -78,6 +81,7 @@ VALID_YAML = {
         "num_holdings": 15,
         "entry_rank": 12,
         "exit_rank": 18,
+        "weighting": "alpha_x_inv_vol",
         "rebalance_interval_hours": 1,
         "min_weight_change": 0.005,
         "max_hourly_turnover": 0.10,
@@ -86,6 +90,7 @@ VALID_YAML = {
         "max_position_eth": 0.15,
         "max_position_other": 0.07,
         "min_position": 0.01,
+        "liquidity_cap_pct": 0.01,
         "zscore_clip": 3.0,
     },
     "backtest": {
@@ -101,8 +106,11 @@ VALID_YAML = {
 def test_settings_parses_valid_yaml():
     settings = Settings(**VALID_YAML)
     assert settings.alphas["crypto_qm_momentum"].weight == 0.75
+    assert settings.risk.btc_regime.use_ema is True
     assert settings.risk.btc_regime.ema_period_hours == 4800
+    assert settings.risk.volatility_targeting.estimator == "stddev"
     assert settings.portfolio.num_holdings == 15
+    assert settings.portfolio.liquidity_cap_pct == 0.01
     assert settings.risk.drawdown_scaling.tiers[0] == [0.05, 1.0]
 
 
